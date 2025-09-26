@@ -1,7 +1,10 @@
 import asyncio
 import datetime
+import threading
+import os
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 API_TOKEN = "8196810650:AAEy59MV1Xmi0XJ8MiyL0wAZpyng_81SgFg"  
 
@@ -176,6 +179,19 @@ async def callback_days(callback: types.CallbackQuery):
 
 
     await callback.answer()
+
+class PingHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_server():
+    port = int(os.environ.get("PORT", 8000))
+    server = HTTPServer(("0.0.0.0", port), PingHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_server, daemon=True).start()
 
 # ---------- ЗАПУСК ----------
 
