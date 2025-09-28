@@ -13,13 +13,16 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from dotenv import load_dotenv
+from aiogram.exceptions import TelegramConflictError
+
 
 load_dotenv()
 # ==========================================================
 # 🧠 Конфигурация режима работы: DEV или PROD
 # ==========================================================
 # Устанавливается через переменную окружения MODE (например, "dev" или "prod")
-MODE = os.getenv("MODE", "dev")  # по умолчанию dev
+MODE = os.getenv("MODE", "dev")
+print(f"🚀 Запуск бота в режиме: {MODE.upper()}")
 
 if MODE == "prod":
     API_TOKEN = os.getenv("PROD_TOKEN")  # ⚠️ токен боевого бота (Render)
@@ -105,7 +108,24 @@ schedule_odd = {
         ]
 }
 
+
+
 # ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
+async def check_token_conflict(bot: Bot):
+    """
+    Проверяем, не запущен ли этот токен уже на другом устройстве или сервере.
+    """
+    try:
+        me = await bot.get_me()
+        print(f"✅ Бот успешно подключён: {me.first_name} (@{me.username})")
+    except TelegramConflictError:
+        print("\n❌ [ОШИБКА]: Этот токен уже используется в другом экземпляре бота!")
+        print("📌 Решение:")
+        print(" - Останови локальный бот, если деплой запущен на Render")
+        print(" - Или наоборот — выключи Render, если тестируешь локально")
+        print(" - Или используй разные токены для DEV и PROD\n")
+        exit(1)
+
 
 
 def is_even_week(start_date: datetime.date = datetime.date(2025, 9, 1)) -> bool:
@@ -599,6 +619,7 @@ async def main():
     asyncio.create_task(reminder_worker(bot))
 
     # ✅ Запускаем Telegram-бота
+    await check_token_conflict(bot) 
     await dp.start_polling(bot)
 
 
