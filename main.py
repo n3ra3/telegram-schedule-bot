@@ -463,20 +463,20 @@ async def reminder_cmd(message: types.Message):
 # ФОНОВАЯ ЗАДАЧА: РАССЫЛКА
 # =========================
 
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
 class PingHandler(BaseHTTPRequestHandler):
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot is running!")
-        
-def run_server():
-    port = int(os.environ.get("PORT", 8000))
-    server = HTTPServer(("0.0.0.0", port), PingHandler)
+        self.wfile.write(b"Bot is running")
+
+def run_http_server():
+    server = HTTPServer(("0.0.0.0", int(os.getenv("PORT", 10000))), PingHandler)
     server.serve_forever()
-    threading.Thread(target=run_server, daemon=True).start()
+
+threading.Thread(target=run_http_server, daemon=True).start()
 
 
 # ---------- ЗАПУСК ----------
