@@ -269,9 +269,9 @@ class PingHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 def start_http_server():
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 8000))  # берем порт от Render
     server = HTTPServer(("0.0.0.0", port), PingHandler)
-    print(f"[SERVER] Health-check запущен на порту {port}")
+    print(f"[PING] HTTP server started on port {port}")
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
 
