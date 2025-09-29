@@ -269,7 +269,7 @@ class PingHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 def start_http_server():
-    port = int(os.environ.get("PORT", 8000))  # берем порт от Render
+    port = int(os.environ.get("PORT", 8000))
     server = HTTPServer(("0.0.0.0", port), PingHandler)
     print(f"[PING] HTTP server started on port {port}")
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -593,25 +593,6 @@ async def reminder_cmd(message: types.Message):
     await message.answer(reminder_menu_text(message.from_user.id),
                          reply_markup=reminder_menu_kb(message.from_user.id),
                          parse_mode="HTML")
-
-# =========================
-# ФОНОВАЯ ЗАДАЧА: РАССЫЛКА
-# =========================
-
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-class PingHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is running")
-
-def run_http_server():
-    server = HTTPServer(("0.0.0.0", int(os.getenv("PORT", 10000))), PingHandler)
-    server.serve_forever()
-
-threading.Thread(target=run_http_server, daemon=True).start()
 
 
 # ---------- ЗАПУСК ----------
