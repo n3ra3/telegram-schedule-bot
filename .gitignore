@@ -1,7 +1,6 @@
 .env
 *.env
 config.json
-reminders.json
 *.log
 __pycache__/
 venv/

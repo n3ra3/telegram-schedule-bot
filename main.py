@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from dotenv import load_dotenv
 from aiogram.exceptions import TelegramConflictError
-
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 load_dotenv()
 # ==========================================================
@@ -22,6 +22,9 @@ load_dotenv()
 # ==========================================================
 # Устанавливается через переменную окружения MODE (например, "dev" или "prod")
 MODE = os.getenv("MODE", "dev")
+DEV_TOKEN = os.getenv("DEV_TOKEN")
+PROD_TOKEN = os.getenv("PROD_TOKEN")
+
 print(f"🚀 Запуск бота в режиме: {MODE.upper()}")
 
 if MODE == "prod":
@@ -35,6 +38,8 @@ if not API_TOKEN:
 # ==========================================================
 # 🧠 Основная конфигурация
 # ==========================================================
+ADMIN_ID = 770511678
+
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
@@ -237,6 +242,38 @@ async def reset_sent_today(message: types.Message):
     else:
         await message.answer("❌ Ты ещё не настраивал напоминание.")
 
+@dp.message(F.text == "/export_reminders")
+async def export_reminders(message: types.Message):
+    """📤 Выгрузка reminders.json только для администратора"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ У тебя нет прав для этой команды.")
+        return
+
+    if not os.path.exists(REMINDERS_FILE):
+        await message.answer("❌ Файл reminders.json пока не создан.")
+        return
+
+    await message.answer_document(types.FSInputFile(REMINDERS_FILE))
+    await message.answer("✅ Файл с напоминаниями успешно выгружен.")
+
+
+class PingHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/ping":
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write("pong ✅".encode("utf-8"))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+def start_http_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), PingHandler)
+    print(f"[SERVER] Health-check запущен на порту {port}")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
 
 class ReminderState(StatesGroup):
     waiting_time = State()
@@ -354,8 +391,85 @@ def reminder_menu_kb(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 # ---------- ХЕНДЛЕРЫ ----------
-
 @dp.message(F.text == "/start")
+async def start_command(message: types.Message):
+    first_name = message.from_user.first_name  # берём имя пользователя из Telegram
+    text = (
+        f"👋 Привет, <b>{first_name}</b>!\n\n"
+        "📅 Я — твой личный помощник по расписанию занятий.\n"
+        "Моя задача — напоминать тебе о парах и держать тебя в курсе расписания.\n\n"
+        "Вот что я умею:\n"
+        "🔔 Отправляю уведомления о первой паре на завтра\n"
+        "🕐 Позволяю выбрать удобное время напоминания\n"
+        "📘 Показываю расписание с учётом чётной/нечётной недели\n\n"
+        "📌 Чтобы начать, введи команду /menu или /reminder."
+    )
+    await message.answer(text, parse_mode="HTML")
+
+@dp.message(F.text == "/botinfo")
+async def bot_info(message: types.Message):
+    info_text = (
+        "🤖 <b>Schedule Reminder Bot</b>\n"
+        "📅 Версия: 1.0.0\n"
+        "📍 Разработчик: @nervblyati\n"
+        "🕐 Часовой пояс: Europe/Chisinau (UTC+3)\n"
+        "🧠 Основные функции:\n"
+        "   • Напоминания о начале занятий\n"
+        "   • Автоматическое определение расписания\n"
+        "   • Поддержка чётных и нечётных недель\n"
+        "   • Настройка времени уведомлений\n"
+        "\n"
+        "💡 Бот обновляется и развивается — следите за новыми возможностями!"
+    )
+    await message.answer(info_text, parse_mode="HTML")
+
+@dp.message(F.text == "/info")
+async def info_command(message: types.Message):
+    help_text = (
+        "📚 <b>Доступные команды:</b>\n\n"
+        "🔹 /menu — главное меню и доступ ко всем функциям\n"
+        "🔹 /reminder — управление уведомлениями о парах\n"
+        "🔹 /botinfo — информация о версии и разработчике\n"
+        "🔹 /info — справка по командам (это сообщение)\n"
+        "\n"
+        "💡 Совет: настройте удобное время уведомления — и бот сам напомнит, когда начинается первая пара завтра!"
+    )
+    await message.answer(help_text, parse_mode="HTML")
+
+class ReportStates(StatesGroup):
+    waiting_for_text = State()
+
+@dp.message(F.text == "/report")
+async def report_start(message: types.Message, state: FSMContext):
+    await message.answer(
+        "🛠️ Пожалуйста, опиши проблему или баг, с которым ты столкнулся.\n"
+        "📨 После отправки я передам её разработчику."
+    )
+    await state.set_state(ReportStates.waiting_for_text)
+
+@dp.message(ReportStates.waiting_for_text)
+async def report_received(message: types.Message, state: FSMContext):
+    report_text = message.text
+    user = message.from_user
+
+    # 📩 ID разработчика (твой Telegram ID)
+    DEV_ID = 770511678  # <-- поменяй на свой
+
+    # Отправляем отчёт разработчику
+    await bot.send_message(
+        DEV_ID,
+        f"🐛 <b>Новый отчёт об ошибке!</b>\n\n"
+        f"👤 Пользователь: {user.full_name} (@{user.username})\n"
+        f"🆔 ID: <code>{user.id}</code>\n\n"
+        f"📄 Сообщение:\n{report_text}",
+        parse_mode="HTML"
+    )
+
+    await message.answer("✅ Спасибо! Отчёт успешно отправлен разработчику 🚀")
+    await state.clear()
+
+
+@dp.message(F.text == "/menu")
 async def start_cmd(message: types.Message):
     await message.answer("Выберите день недели:", reply_markup=get_days_keyboard())
 
@@ -423,6 +537,7 @@ async def callback_router(callback: types.CallbackQuery, state: FSMContext):
                             [InlineKeyboardButton(text="⬅ Отмена", callback_data="reminder_open")]
                         ]))
         return
+
 
 
 
@@ -624,5 +739,6 @@ async def main():
 
 
 if __name__ == "__main__":
+    start_http_server()
     asyncio.run(main())
 
