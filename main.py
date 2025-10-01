@@ -16,6 +16,8 @@ from dotenv import load_dotenv
 from aiogram.exceptions import TelegramConflictError
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+BOT_START_TIME = datetime.datetime.now()
+
 load_dotenv()
 # ==========================================================
 # 🧠 Конфигурация режима работы: DEV или PROD
@@ -264,15 +266,44 @@ class PingHandler(BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/plain")
             self.end_headers()
             self.wfile.write("pong ✅".encode("utf-8"))
+            print("[PING] ✅ Received ping request")
         else:
             self.send_response(404)
             self.end_headers()
 
+
 def start_http_server():
+    """Запускает HTTP-сервер для проверки доступности, если порт не занят."""
     port = int(os.environ.get("PORT", 8000))
-    server = HTTPServer(("0.0.0.0", port), PingHandler)
-    print(f"[PING] HTTP server started on port {port}")
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        server = HTTPServer(("0.0.0.0", port), PingHandler)
+        print(f"[PING] ✅ HTTP server started on port {port}")
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    except OSError as e:
+        if e.errno == 98:
+            print(f"[PING] ⚠️ Порт {port} уже занят — пропускаем запуск сервера (возможно, он уже работает)")
+        else:
+            raise
+
+async def self_ping_loop():
+    """Периодически пингует сам себя, чтобы Render не засыпал."""
+    import aiohttp
+
+    url = os.getenv("PING_URL")  # URL твоего бота на Render, например: https://telegram-schedule-bot-f1bf.onrender.com/ping
+
+    if not url:
+        print("[SELF-PING] ⚠️ PING_URL не задан — пропускаем self-ping")
+        return
+
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    print(f"[SELF-PING] ✅ {url} → {resp.status}")
+        except Exception as e:
+            print(f"[SELF-PING] ❌ Ошибка self-ping: {e}")
+
+        await asyncio.sleep(300)  # 🔁 пингуем каждые 5 минут
 
 
 class ReminderState(StatesGroup):
@@ -423,6 +454,14 @@ async def bot_info(message: types.Message):
     )
     await message.answer(info_text, parse_mode="HTML")
 
+def back_to_schedule_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⬅ Назад", callback_data="back")]
+        ]
+    )
+
+
 @dp.message(F.text == "/info")
 async def info_command(message: types.Message):
     help_text = (
@@ -467,6 +506,60 @@ async def report_received(message: types.Message, state: FSMContext):
 
     await message.answer("✅ Спасибо! Отчёт успешно отправлен разработчику 🚀")
     await state.clear()
+
+@dp.message(F.text == "/status")
+async def status_handler(message: types.Message):
+    now = datetime.datetime.now()
+    uptime = now - BOT_START_TIME
+    days, remainder = divmod(uptime.total_seconds(), 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, _ = divmod(remainder, 60)
+
+    # 📊 Подсчёт активных пользователей
+    active_users = [uid for uid, data in reminders.items() if data.get("enabled", False)]
+    active_count = len(active_users)
+
+    # 📬 Последнее напоминание (ищем самое позднее время отправки)
+    last_sent_date = None
+    if os.path.exists(REMINDERS_FILE):
+        try:
+            with open(REMINDERS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # Здесь ты можешь хранить last_sent_date глобально — если хочешь точнее
+            last_sent_date = max(
+                (datetime.datetime.combine(datetime.date.today(), datetime.datetime.strptime(v["time"], "%H:%M").time())
+                 for v in data.values() if "time" in v),
+                default=None
+            )
+        except Exception:
+            pass
+
+    last_sent_str = last_sent_date.strftime("%d.%m.%Y %H:%M") if last_sent_date else "ещё не отправлялось"
+
+    # 📅 Список ближайших напоминаний
+    upcoming_list = []
+    for uid, info in reminders.items():
+        if info.get("enabled", False) and "time" in info:
+            upcoming_list.append(f"• UID {uid} — {info['time']}")
+
+    upcoming_text = "\n".join(upcoming_list) if upcoming_list else "❌ Нет активных напоминаний"
+
+    # 📤 Формируем ответ
+    text = (
+        "📊 <b>Статус бота</b>\n\n"
+        f"⏱ Uptime: {int(days)} дн. {int(hours)} ч. {int(minutes)} мин.\n"
+        f"👥 Активные пользователи: {active_count}\n"
+        f"📬 Последнее напоминание: {last_sent_str}\n\n"
+        f"📅 Следующие напоминания:\n{upcoming_text}"
+    )
+
+    # ✅ Добавляем кнопку «Назад»
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад к расписанию", callback_data="back_to_menu")]
+    ])
+
+    await message.answer(text, parse_mode="HTML", reply_markup=back_to_schedule_kb())
+
 
 
 @dp.message(F.text == "/menu")
@@ -618,11 +711,11 @@ async def reminder_worker(bot: Bot):
             print(f"[RESET] sent_today flags cleared for {today}")
 
 
-        # # Напоминания нужны вс–чт (перед пн–пт), значит в пт/сб НЕ шлём
-        # if now_dt.weekday() in (4, 5):  # 4=Пт, 5=Сб
-        #     print(f"[SCAN] {now_hms} skip (Fri/Sat)")
-        #     await asyncio.sleep(10)
-        #     continue
+        # Напоминания нужны вс–чт (перед пн–пт), значит в пт/сб НЕ шлём
+        if now_dt.weekday() in (4, 5):  # 4=Пт, 5=Сб
+            print(f"[SCAN] {now_hms} skip (Fri/Sat)")
+            await asyncio.sleep(10)
+            continue
 
         for uid, data in reminders.items():
             enabled = data.get("enabled", False)
@@ -711,15 +804,27 @@ async def main():
             data["sent_today"] = False
     save_reminders()
 
+    # ✅ Запускаем фоновый self-ping, чтобы Render не засыпал
+    asyncio.create_task(self_ping_loop())
+
     # ✅ Запускаем фонового воркера напоминаний
     asyncio.create_task(reminder_worker(bot))
 
-    # ✅ Запускаем Telegram-бота
-    await check_token_conflict(bot) 
+    # ✅ Проверяем токен и запускаем Telegram-бота
+    await check_token_conflict(bot)
     await dp.start_polling(bot)
 
 
+
 if __name__ == "__main__":
-    start_http_server()
-    asyncio.run(main())
+    if "RENDER" in os.environ or os.getenv("PORT"):
+        start_http_server()
+
+    async def runner():
+        # ⚙️ Запускаем основную логику
+        await main()
+
+    asyncio.run(runner())
+
+
 
