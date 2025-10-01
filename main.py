@@ -265,11 +265,16 @@ class PingHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
             self.end_headers()
-            self.wfile.write("pong ✅".encode("utf-8"))
-            print("[PING] ✅ Received ping request")
+            self.wfile.write(b"pong")
+        elif self.path == "/":
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"Bot server is running")
         else:
             self.send_response(404)
             self.end_headers()
+
 
 
 def start_http_server():
