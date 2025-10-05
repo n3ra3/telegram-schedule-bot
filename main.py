@@ -167,16 +167,15 @@ def get_schedule_keyboard(day: str, week_type: str):
         ]
     )
 
-def get_week_number_and_type(for_date: datetime.date, start_date: datetime.date = START_SEMESTER):
-    delta_weeks = (for_date - start_date).days // 7
-    week_number = delta_weeks + 1
-    week_type = "even" if (week_number + 1) % 2 == 0 else "odd"  # 👈 добавлен +1
+def get_week_number_and_type(for_date: datetime.date = datetime.date.today(), start_date: datetime.date = START_SEMESTER):
+    week_number = ((for_date - start_date).days // 7) + 1
+    week_type = "even" if week_number % 2 == 0 else "odd"
     return week_number, week_type
 
 
-def format_schedule(day: str, schedule: dict, week_type: str, group: str = "DIN-253", subgroup: str = "Вторая"):
+def format_schedule(day: str, schedule: dict, week_type: str, group: str = "DIN-\253", subgroup: str = "Вторая"):
     """Форматирует расписание в красивый текст"""
-    week_number, week_type = get_week_number_and_type(datetime.date.today())
+    week_number, _ = get_week_number_and_type(datetime.date.today())  # ← week_type не пересчитываем
     header = (
         f"📘 Расписание группы {group} на {day}\n"
         f"Неделя №{week_number} ({'чётная' if week_type == 'even' else 'нечётная'}) – {subgroup} подгруппа\n\n"
@@ -194,6 +193,9 @@ def format_schedule(day: str, schedule: dict, week_type: str, group: str = "DIN-
             f"Аудитория: {lesson['room']}\n"
             f"Время: {lesson['time']}\n"
         )
+
+    return header + "\n".join(lines)
+
 
     return header + "\n".join(lines)
 
