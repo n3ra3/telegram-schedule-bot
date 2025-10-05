@@ -646,10 +646,11 @@ async def callback_router(callback: types.CallbackQuery, state: FSMContext):
     elif data.startswith("day_"):
         day = data.split("_", 1)[1]
         today = datetime.date.today()
-        _, week_type = get_week_number_and_type(today)
+        week_number, week_type = get_week_number_and_type(today)
         schedule = schedule_even if week_type == "even" else schedule_odd
         new_text = format_schedule(day, schedule, week_type)
         await safe_edit(callback, new_text, get_schedule_keyboard(day, week_type))
+
 
 
 # Переключение недели
