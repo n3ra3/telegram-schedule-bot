@@ -170,13 +170,13 @@ def get_schedule_keyboard(day: str, week_type: str):
 def get_week_number_and_type(for_date: datetime.date, start_date: datetime.date = START_SEMESTER):
     delta_weeks = (for_date - start_date).days // 7
     week_number = delta_weeks + 1
-    week_type = "even" if week_number % 2 == 0 else "odd"
+    week_type = "even" if (week_number + 1) % 2 == 0 else "odd"  # 👈 добавлен +1
     return week_number, week_type
 
 
 def format_schedule(day: str, schedule: dict, week_type: str, group: str = "DIN-253", subgroup: str = "Вторая"):
     """Форматирует расписание в красивый текст"""
-    week_number, week_type = get_week_number_and_type()
+    week_number, week_type = get_week_number_and_type(datetime.date.today())
     header = (
         f"📘 Расписание группы {group} на {day}\n"
         f"Неделя №{week_number} ({'чётная' if week_type == 'even' else 'нечётная'}) – {subgroup} подгруппа\n\n"
@@ -645,10 +645,12 @@ async def callback_router(callback: types.CallbackQuery, state: FSMContext):
 # День недели выбран
     elif data.startswith("day_"):
         day = data.split("_", 1)[1]
-        week_type = "even" if is_even_week() else "odd"
+        today = datetime.date.today()
+        _, week_type = get_week_number_and_type(today)
         schedule = schedule_even if week_type == "even" else schedule_odd
         new_text = format_schedule(day, schedule, week_type)
         await safe_edit(callback, new_text, get_schedule_keyboard(day, week_type))
+
 
 # Переключение недели
     elif data.startswith("switch_"):
