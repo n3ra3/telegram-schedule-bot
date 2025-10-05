@@ -176,7 +176,7 @@ def get_week_number_and_type(for_date: datetime.date, start_date: datetime.date 
 
 def format_schedule(day: str, schedule: dict, week_type: str, group: str = "DIN-253", subgroup: str = "Вторая"):
     """Форматирует расписание в красивый текст"""
-    week_number = datetime.date.today().isocalendar()[1]
+    week_number, week_type = get_week_number_and_type()
     header = (
         f"📘 Расписание группы {group} на {day}\n"
         f"Неделя №{week_number} ({'чётная' if week_type == 'even' else 'нечётная'}) – {subgroup} подгруппа\n\n"
