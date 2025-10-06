@@ -167,18 +167,27 @@ def get_schedule_keyboard(day: str, week_type: str):
         ]
     )
 
-def get_week_number_and_type(for_date: datetime.date = datetime.date.today(), start_date: datetime.date = START_SEMESTER):
-    week_number = ((for_date - start_date).days // 7) + 1
-    week_type = "even" if week_number % 2 == 0 else "odd"
-    return week_number, week_type
+def get_week_number_and_type(for_date=None):
+    if for_date is None:
+        for_date = datetime.datetime.now(TZ).date()
+    weeks_passed = ((for_date - START_SEMESTER).days // 7) + 1  # 1-я неделя = 1
+    week_type = "even" if weeks_passed % 2 == 0 else "odd"
+    return weeks_passed, week_type
 
 
-def format_schedule(day: str, schedule: dict, week_type: str, group: str = "DIN-\253", subgroup: str = "Вторая"):
+@dp.message(F.text == "/debug_week")
+async def dbg(message: types.Message):
+    n, t = get_week_number_and_type()
+    await message.answer(f"Неделя №{n}, тип: {t}")
+
+
+def format_schedule(day: str, schedule: dict, week_type: str, group: str = "DIN-253", subgroup: str = "Вторая"):
     """Форматирует расписание в красивый текст"""
     week_number, _ = get_week_number_and_type(datetime.date.today())  # ← week_type не пересчитываем
+    ru = {"even": "чётная", "odd": "нечётная"}
     header = (
         f"📘 Расписание группы {group} на {day}\n"
-        f"Неделя №{week_number} ({'чётная' if week_type == 'even' else 'нечётная'}) – {subgroup} подгруппа\n\n"
+        f"Неделя №{week_number} ({ru[week_type]}) – {subgroup} подгруппа\n\n"
     )
 
     lessons = schedule.get(day, [])
@@ -702,6 +711,13 @@ async def reminder_cmd(message: types.Message):
 
 
 # ---------- ЗАПУСК ----------
+today = datetime.datetime.now(TZ).date()
+print("[DEBUG] Сегодня:", today, "START_SEMESTER:", START_SEMESTER)
+weeks_passed = ((today - START_SEMESTER).days // 7) + 1
+print("[DEBUG] weeks_passed:", weeks_passed)
+
+
+
 async def reminder_worker(bot: Bot):
     global reminders, last_sent, _last_reset_date  # ✅ объявляем глобальные переменные один раз в начале
     tz = pytz.timezone("Europe/Chisinau")
