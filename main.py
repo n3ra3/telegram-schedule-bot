@@ -480,6 +480,87 @@ def back_to_schedule_kb() -> InlineKeyboardMarkup:
         ]
     )
 
+# ======= Глобальный флаг рассылки =======
+BROADCAST_ENABLED = True  # если False — рассылка не идёт
+
+def set_broadcast_enabled(value: bool):
+    global BROADCAST_ENABLED
+    BROADCAST_ENABLED = value
+
+def get_broadcast_enabled():
+    return BROADCAST_ENABLED
+
+# ======= Админ-панель =======
+@dp.message(F.text == "/admin")
+async def admin_panel(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ Нет доступа.")
+        return
+    status = "✅ Включена" if get_broadcast_enabled() else "⛔ Отключена"
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⛔ Остановить рассылку", callback_data="admin_stop")],
+        [InlineKeyboardButton(text="✅ Включить рассылку", callback_data="admin_start")],
+        [InlineKeyboardButton(text="✉️ Написать пользователю", callback_data="admin_msg")],
+        # добавлена кнопка назад, чтобы админ мог вернуться в меню расписания
+        [InlineKeyboardButton(text="⬅ Назад", callback_data="back")],
+    ])
+    await message.answer(f"🛡️ <b>Админ-панель</b>\n\nСтатус рассылки: {status}", parse_mode="HTML", reply_markup=kb)
+
+@dp.callback_query(F.data.in_({"admin_stop", "admin_start"}))
+async def admin_toggle_broadcast(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ Нет доступа.")
+        return
+    if callback.data == "admin_stop":
+        set_broadcast_enabled(False)
+        await callback.message.edit_text("⛔ Рассылка остановлена.", reply_markup=None)
+    else:
+        set_broadcast_enabled(True)
+        await callback.message.edit_text("✅ Рассылка включена.", reply_markup=None)
+    await callback.answer()
+
+class AdminMsgState(StatesGroup):
+    waiting_uid = State()
+    waiting_text = State()
+
+@dp.callback_query(F.data == "admin_msg")
+async def admin_msg_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("❌ Нет доступа.")
+        return
+    # показываем кнопку "⬅ Назад", чтобы админ мог отменить ввод UID
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅ Назад", callback_data="back")]
+    ])
+    await callback.message.edit_text("✉️ Введите UID пользователя, которому хотите написать:", reply_markup=kb)
+    await state.set_state(AdminMsgState.waiting_uid)
+    await callback.answer()
+
+@dp.message(AdminMsgState.waiting_uid)
+async def admin_msg_uid(message: types.Message, state: FSMContext):
+    uid = message.text.strip()
+    if not uid.isdigit():
+        await message.answer("❌ UID должен быть числом. Попробуйте ещё раз.")
+        return
+    await state.update_data(uid=uid)
+    # добавляем кнопку "⬅ Назад" и просим ввести текст
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅ Назад", callback_data="back")]
+    ])
+    await message.answer("✉️ Введите текст сообщения для пользователя:", reply_markup=kb)
+    await state.set_state(AdminMsgState.waiting_text)
+
+@dp.message(AdminMsgState.waiting_text)
+async def admin_msg_text(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    uid = data.get("uid")
+    text = message.text
+    try:
+        await bot.send_message(int(uid), f"📩 Сообщение от администратора:\n\n{text}")
+        await message.answer("✅ Сообщение отправлено.")
+    except Exception as e:
+        await message.answer(f"❌ Не удалось отправить сообщение: {e}")
+    await state.clear()
 
 @dp.message(F.text == "/info")
 async def info_command(message: types.Message):
@@ -726,6 +807,7 @@ async def reminder_worker(bot: Bot):
     if "_last_reset_date" not in globals():
         _last_reset_date = None
 
+
     while True:
         now_dt = datetime.datetime.now(tz)
         now_hms = now_dt.strftime("%H:%M:%S")
@@ -738,7 +820,9 @@ async def reminder_worker(bot: Bot):
             save_reminders()
             _last_reset_date = today
             print(f"[RESET] sent_today flags cleared for {today}")
-
+        elif not get_broadcast_enabled():
+            print("[ADMIN] Рассылка отключена админом.")
+            await asyncio.sleep(10)
 
         # Напоминания нужны вс–чт (перед пн–пт), значит в пт/сб НЕ шлём
         if now_dt.weekday() in (4, 5):  # 4=Пт, 5=Сб

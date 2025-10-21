@@ -13,5 +13,15 @@
     "enabled": true,
     "time": "20:00",
     "sent_today": false
+  },
+  "1032868174": {
+    "enabled": true,
+    "time": "23:00",
+    "sent_today": false
+  },
+  "852755897": {
+    "enabled": true,
+    "time": "22:00",
+    "sent_today": false
   }
 }
