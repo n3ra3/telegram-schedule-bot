@@ -23,5 +23,10 @@
     "enabled": true,
     "time": "22:00",
     "sent_today": false
+  },
+  "888172324": {
+    "enabled": true,
+    "time": "22:00",
+    "sent_today": false
   }
 }
